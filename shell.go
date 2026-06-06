@@ -67,7 +67,7 @@ func InfoResponse() *v2.InfoResponse {
 		Name:         Name,
 		Version:      Version,
 		SourceUrl:    "https://github.com/brokenbots/criteria-adapter-shell",
-		Platforms:    []string{"linux/amd64"},
+		Platforms:    []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"},
 		Capabilities: []string{"parallel_safe"},
 		InputSchema: &v2.AdapterSchemaProto{Fields: map[string]*v2.ConfigFieldProto{
 			"command": {
