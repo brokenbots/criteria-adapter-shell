@@ -29,7 +29,7 @@ inputs below. The runtime working-directory allowlist is controlled by the host:
 ```hcl
 adapter "shell" "ci" {
   source  = "ghcr.io/brokenbots/criteria-adapter-shell"
-  version = "0.5.x"
+  version = "0.5.2"
 }
 ```
 
