@@ -1,4 +1,5 @@
 bin/
+artifact/
 *.test
 coverage.out
 

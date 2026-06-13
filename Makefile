@@ -24,6 +24,16 @@ help: ## List targets
 build: ## Build the adapter
 	$(GO) build ./...
 
+cross-build: ## Cross-build all supported platforms into artifact/bin/<os>/<arch>/
+	@for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		os="$${platform%/*}"; arch="$${platform#*/}"; \
+		outdir="artifact/bin/$${os}/$${arch}"; \
+		mkdir -p "$$outdir"; \
+		echo "building $${platform}"; \
+		CGO_ENABLED=0 GOOS="$$os" GOARCH="$$arch" \
+		  $(GO) build -trimpath -o "$$outdir/criteria-adapter-shell" .; \
+	done
+
 test: ## Run tests
 	$(GO) test ./...
 
