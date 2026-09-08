@@ -82,7 +82,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}-image
+          tags: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}
           provenance: false
       - name: Publish
         uses: brokenbots/publish-adapter@v0
@@ -91,4 +91,4 @@ jobs:
           binary: ${{ github.workspace }}/artifact
           registry: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}
           # Reference of the already-built, already-pushed runnable container image.
-          image: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}-image@${{ steps.image.outputs.digest }}
+          image: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}@${{ steps.image.outputs.digest }}

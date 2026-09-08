@@ -20,8 +20,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY --from=build --chown=nonroot:nonroot /out/criteria-adapter-shell /criteria-adapter-shell
+COPY --from=build --chown=nonroot:nonroot /out/criteria-adapter-shell /usr/local/bin/criteria-adapter-shell
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/criteria-adapter-shell"]
+ENTRYPOINT ["/usr/local/bin/criteria-adapter-shell"]
