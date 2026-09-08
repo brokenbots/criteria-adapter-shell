@@ -67,11 +67,28 @@ jobs:
           else
             echo "tag=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push container image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}-image
+          provenance: false
       - name: Publish
         uses: brokenbots/publish-adapter@v0
         with:
           # Directory containing the multi-platform bin/<os>/<arch>/ tree.
           binary: ${{ github.workspace }}/artifact
           registry: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}
+          # Reference of the already-built, already-pushed runnable container image.
+          image: ghcr.io/${{ github.repository_owner }}/criteria-adapter-shell:${{ steps.ver.outputs.tag }}-image@${{ steps.image.outputs.digest }}

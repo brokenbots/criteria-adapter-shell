@@ -27,7 +27,7 @@ import (
 const Name = "shell"
 
 // Version is the adapter's protocol-v2 version string.
-const Version = "2.0.0"
+const Version = "2.0.1"
 
 // Service implements adapterhost.Service for the shell adapter. One instance
 // serves all sessions for the adapter process.
