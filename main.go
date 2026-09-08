@@ -12,16 +12,19 @@ import (
 )
 
 func main() {
-	if err := runAdapter(); err != nil {
+	if err := runAdapter(Serve, serveRemote); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func runAdapter() error {
+// runAdapter chooses between local go-plugin and remote sidecar serving based
+// on CRITERIA_REMOTE_HOST. The dependencies are injected so the central
+// branch can be unit-tested without touching the network or plugin loader.
+func runAdapter(serveLocal func(), serveRemoteFn func(host string) error) error {
 	if host := os.Getenv("CRITERIA_REMOTE_HOST"); host != "" {
-		return serveRemote(host)
+		return serveRemoteFn(host)
 	}
-	Serve()
+	serveLocal()
 	return nil
 }

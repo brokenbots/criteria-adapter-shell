@@ -9,7 +9,6 @@ import (
 	adapterhost "github.com/brokenbots/criteria-go-adapter-sdk/adapterhost"
 )
 
-
 // serveRemote connects the shell adapter to a Criteria host shim over TCP or
 // Unix, optionally with mTLS. It reconnects automatically when the connection
 // drops so Kubernetes sidecars survive host restarts and pod rescheduling.
