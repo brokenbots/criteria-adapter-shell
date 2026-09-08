@@ -4,7 +4,7 @@
 # The published image runs the adapter binary directly as a phone-home
 # container (CRITERIA_REMOTE_HOST must be supplied at runtime).
 
-FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS build
 
 WORKDIR /src
 
