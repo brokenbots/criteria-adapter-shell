@@ -24,6 +24,13 @@ package main
 // records config/secrets and never touches the filesystem, and Execute keeps
 // working under the same per-step working-directory confinement, so the
 // surviving worktree diff is continued with no adapter-side replay.
+//
+// Verified for CRI-210 (per-scope teardown): the adapter binary performs no
+// durable filesystem I/O — only the spawned shell children write, and only
+// under the per-step working_directory confinement (sandbox.go) — and all
+// adapter state (sessions, gates) is process-local memory. Per-scope
+// teardown therefore destroys only the pod, not anything the restore path
+// needs: the PVC-resident worktree plus idempotent setup fully reproduce it.
 
 import (
 	"context"
