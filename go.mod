@@ -4,8 +4,8 @@ go 1.26.6
 
 require (
 	github.com/brokenbots/criteria-adapter-proto v0.6.0
-	github.com/brokenbots/criteria-go-adapter-sdk v0.5.3
-	google.golang.org/protobuf v1.36.11
+	github.com/brokenbots/criteria-go-adapter-sdk v0.5.4
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
