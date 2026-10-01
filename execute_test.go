@@ -230,13 +230,15 @@ func TestSandbox_Timeout_ShortCommandFails(t *testing.T) {
 	}
 }
 
+// This runs with plain POSIX tooling rather than python3 so the suite does
+// not depend on an interpreter being installed (10 MiB of 'x' on stdout).
 func TestSandbox_BoundedOutput_TruncatesAtLimit(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell adapter uses sh; skip on Windows")
 	}
 	const limitBytes = 1024 * 1024
 	outcome, outputs, events, err := run(t, map[string]string{
-		"command":            `python3 -c "import sys; sys.stdout.write('x' * (10 * 1024 * 1024))"`,
+		"command":            "head -c 10485760 /dev/zero | tr '\\0' 'x'",
 		"output_limit_bytes": "1048576",
 	})
 	if err != nil {
