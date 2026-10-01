@@ -45,9 +45,9 @@ type lifecycleGate struct {
 	closed   bool
 	inflight int
 
-	// resumedCh is closed on Resume (and at close). Pause and Close replace
-	// it in kind with a fresh channel before closing the old one, so no two
-	// transitions ever close the same channel twice.
+	// resumedCh is closed on Resume (which installs a fresh channel on the
+	// next pause, so a spent channel can never wake a future waiter) and by
+	// Close (first Close only), releasing waiters with errSessionClosed.
 	resumedCh chan struct{}
 	// drainedCh is closed when inflight drains back to 0. It is created by
 	// the Execute that transitions inflight 0→1 and closed by the one that

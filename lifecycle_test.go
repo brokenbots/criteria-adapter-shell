@@ -26,8 +26,6 @@ type nopEventSink struct{}
 
 func (nopEventSink) Send(*v2.ExecuteEvent) error { return nil }
 
-func newGatedService() *Service { return NewService() }
-
 func openSession(t *testing.T, s *Service, id string) {
 	t.Helper()
 	if _, err := s.OpenSession(context.Background(), &v2.OpenSessionRequest{SessionId: id}); err != nil {
@@ -145,7 +143,7 @@ func TestLifecycle_PauseAckBlocksNewExecutes(t *testing.T) {
 }
 
 func TestLifecycle_PauseIdempotent_ResumeIdempotent(t *testing.T) {
-	s := newGatedService()
+	s := NewService()
 	openSession(t, s, "sess-idem")
 
 	if _, err := s.Pause(context.Background(), pauseReq("sess-idem")); err != nil {
@@ -183,7 +181,7 @@ func TestLifecycle_PauseMidCommandDrainsChild(t *testing.T) {
 	t.Setenv("CRITERIA_SHELL_ALLOWED_PATHS", dir)
 	marker := filepath.Join(dir, "marker.txt")
 
-	s := newGatedService()
+	s := NewService()
 	openSession(t, s, "sess-1")
 
 	input := map[string]string{
@@ -253,7 +251,7 @@ func TestLifecycle_ReopenAfterStop_ContinuesWorktree_NoDuplication(t *testing.T)
 	log := filepath.Join(dir, "ledger.txt")
 
 	// Live phase: one completed step appends to the worktree.
-	s := newGatedService()
+	s := NewService()
 	openSession(t, s, "sess-live")
 	if err := execStep(t, s, "sess-live", map[string]string{
 		"command":           "printf 'step1\\n' >> " + log,
@@ -271,7 +269,7 @@ func TestLifecycle_ReopenAfterStop_ContinuesWorktree_NoDuplication(t *testing.T)
 	if err != nil {
 		t.Fatalf("worktree did not survive the stop: %v", err)
 	}
-	resumed := newGatedService()
+	resumed := NewService()
 	openSession(t, resumed, "sess-2")
 
 	// The engine re-issues only INCOMPLETE steps; a completed step's effect
@@ -300,7 +298,7 @@ func TestLifecycle_ReopenAfterStop_ContinuesWorktree_NoDuplication(t *testing.T)
 }
 
 func TestLifecycle_CloseReleasesPausedWaiters(t *testing.T) {
-	s := newGatedService()
+	s := NewService()
 	openSession(t, s, "sess-close")
 	if _, err := s.Pause(context.Background(), pauseReq("sess-close")); err != nil {
 		t.Fatalf("Pause: %v", err)
@@ -328,7 +326,7 @@ func TestLifecycle_CloseReleasesPausedWaiters(t *testing.T) {
 }
 
 func TestLifecycle_UnknownSessionsRefused(t *testing.T) {
-	s := newGatedService()
+	s := NewService()
 	if _, err := s.Pause(context.Background(), pauseReq("nope")); err == nil {
 		t.Error("Pause on unknown session must be refused")
 	}
