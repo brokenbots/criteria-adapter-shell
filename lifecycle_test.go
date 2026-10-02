@@ -205,8 +205,12 @@ func TestLifecycle_PauseMidCommandDrainsChild(t *testing.T) {
 		t.Fatalf("Pause: %v", err)
 	}
 	cancel()
-	if ackDelay := time.Since(t0); ackDelay > 10*time.Second {
-		t.Errorf("pause ack overdue: %v", ackDelay)
+	// Pin the ack in time: it must NOT land immediately — the gate holds it
+	// until the child reaches its command boundary (the 1.5s sleep) — and it
+	// must land comfortably inside pauseCtx's 10s deadline, not by being
+	// DeadlineExceeded.
+	if ackDelay := time.Since(t0); ackDelay < 500*time.Millisecond || ackDelay > 5*time.Second {
+		t.Errorf("pause acked after %v; want 500ms..5s — acking only after the child reached its 1.5s boundary, well inside the 10s pause deadline", ackDelay)
 	}
 
 	<-execDone
@@ -322,6 +326,42 @@ func TestLifecycle_CloseReleasesPausedWaiters(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Execute did not fail fast after CloseSession; the gate leaked the waiter")
+	}
+}
+
+// TestLifecycle_ResumeThenCloseSession_NoDoubleClose is the regression test
+// for the double-close panic: Pause installs a fresh resumedCh, Resume closed
+// it without installing a fresh one, and the later Close then closed the
+// spent channel again — panicking ("close of closed channel") and tearing
+// down the adapter process on the plain OpenSession→Pause→Resume→CloseSession
+// flow. CloseSession must instead return cleanly, and a subsequent Execute
+// must be refused like an unknown session's.
+func TestLifecycle_ResumeThenCloseSession_NoDoubleClose(t *testing.T) {
+	s := NewService()
+	openSession(t, s, "sess-rc")
+	if _, err := s.Pause(context.Background(), pauseReq("sess-rc")); err != nil {
+		t.Fatalf("Pause: %v", err)
+	}
+	if _, err := s.Resume(context.Background(), resumeReq("sess-rc")); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+
+	// A panic here tears down the adapter process, so pin it explicitly:
+	// CloseSession after a completed pause/resume cycle must just return.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("CloseSession after Resume panicked: %v", r)
+		}
+	}()
+	if _, err := s.CloseSession(context.Background(), closeReq("sess-rc")); err != nil {
+		t.Fatalf("CloseSession after Resume: %v", err)
+	}
+
+	// The closed session is discarded like any other: a subsequent Execute
+	// must be refused with the same error class an unknown-session Execute
+	// sees (the session is no longer in the map, so it IS unknown now).
+	if err := execStep(t, s, "sess-rc", map[string]string{"command": "true"}); err == nil {
+		t.Error("Execute on closed session must be refused")
 	}
 }
 

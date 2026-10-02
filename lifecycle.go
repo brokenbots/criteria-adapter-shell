@@ -52,9 +52,10 @@ type lifecycleGate struct {
 	closed   bool
 	inflight int
 
-	// resumedCh is closed on Resume (which installs a fresh channel on the
-	// next pause, so a spent channel can never wake a future waiter) and by
-	// Close (first Close only), releasing waiters with errSessionClosed.
+	// resumedCh wakes Executes held at the gate. Resume closes the installed
+	// channel and immediately installs a fresh one, so a spent channel never
+	// lingers: Close (first Close only) then always closes an open channel,
+	// releasing waiters with errSessionClosed.
 	resumedCh chan struct{}
 	// drainedCh is closed when inflight drains back to 0. It is created by
 	// the Execute that transitions inflight 0→1 and closed by the one that
@@ -110,7 +111,11 @@ func (g *lifecycleGate) Pause(ctx context.Context) error {
 	}
 }
 
-// Resume lifts the pause, releasing any Execute held at the gate. Resuming an
+// Resume lifts the pause, releasing any Execute held at the gate. Close the
+// spent channel FIRST (waking the waiters blocked on it), then install a
+// fresh open one — installing before closing would strand those waiters, and
+// leaving the spent channel installed would make a later Close panic on a
+// "close of closed channel" after a completed pause/resume cycle. Resuming an
 // already-active session is a no-op; a closed gate stays closed.
 func (g *lifecycleGate) Resume() {
 	g.mu.Lock()
@@ -120,12 +125,16 @@ func (g *lifecycleGate) Resume() {
 	}
 	g.paused = false
 	close(g.resumedCh)
+	g.resumedCh = make(chan struct{})
 }
 
 // Close tears the gate down, releasing the waiters. Only the first Close
 // runs: it closes the resumedCh that current waiters hold, releasing every
 // blocked Execute with errSessionClosed. (A replaced-then-closed scheme would
-// strand waiters that are already blocked on the older channel.)
+// strand waiters that are already blocked on the older channel.) Because both
+// Pause and Resume install a fresh channel whenever they close a spent one,
+// the channel installed at Close time is always open — the double Close is
+// still guarded by g.closed.
 func (g *lifecycleGate) Close() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
