@@ -36,6 +36,7 @@ type Service struct {
 
 	mu       sync.Mutex
 	sessions map[string]*sessionState
+	gates    map[string]*lifecycleGate
 }
 
 // sessionState holds per-session state: the resolved config/secrets and the
@@ -50,7 +51,10 @@ type sessionState struct {
 
 // NewService returns a shell Service ready to be passed to adapterhost.Serve.
 func NewService() *Service {
-	return &Service{sessions: map[string]*sessionState{}}
+	return &Service{
+		sessions: map[string]*sessionState{},
+		gates:    map[string]*lifecycleGate{},
+	}
 }
 
 // Serve runs the shell adapter's protocol-v2 serve loop. Call this from the
@@ -101,6 +105,16 @@ func InfoResponse() *v2.InfoResponse {
 			"stderr":    {Type: "string", Description: "Captured stderr (bounded; see output_limit_bytes)."},
 			"exit_code": {Type: "string", Description: "Process exit code as a string."},
 		}},
+		// The shell adapter holds no engine-managed checkpointable state: mode
+		// "none", so schema/max_bytes/granularity are not part of the
+		// declaration (they are required only for blob/ref). The adapter's
+		// state IS the environment — the run's worktree, which lives on the
+		// host's data PVC, survives pod death, and is reproduced by idempotent
+		// setup. A (re)spawn therefore starts fresh against the surviving
+		// worktree and there is no adapter state blob for the host to
+		// checkpoint or restore (CRI-205; full v2 environment-resume boundary:
+		// CRI-210).
+		State: &v2.StateDescriptor{Mode: "none"},
 	}
 }
 
@@ -110,6 +124,9 @@ func (s *Service) Info(context.Context, *v2.InfoRequest) (*v2.InfoResponse, erro
 }
 
 // OpenSession records the resolved config and secrets for a new session.
+// It deliberately touches nothing on the filesystem: a session opened after a
+// stop re-executes against the surviving worktree, so open must not clobber
+// or re-initialize it.
 func (s *Service) OpenSession(_ context.Context, req *v2.OpenSessionRequest) (*v2.OpenSessionResponse, error) {
 	id := req.GetSessionId()
 	if id == "" {
@@ -124,6 +141,7 @@ func (s *Service) OpenSession(_ context.Context, req *v2.OpenSessionRequest) (*v
 		config:  cloneMap(req.GetConfig()),
 		secrets: cloneMap(req.GetSecrets()),
 	}
+	s.gates[id] = newLifecycleGate()
 	return &v2.OpenSessionResponse{}, nil
 }
 
@@ -133,6 +151,17 @@ func (s *Service) Execute(ctx context.Context, req *v2.ExecuteRequest, sink adap
 	if sess == nil {
 		return fmt.Errorf("shell adapter: unknown session %q", req.GetSessionId())
 	}
+
+	// Pause gate: while the session is paused this waits until Resume, so a
+	// command is only started on an unpaused, open session. A pause that
+	// arrives mid-command waits for the command's boundary via the gate's
+	// in-flight tracking (see lifecycle.go) — the running child drains
+	// naturally instead of being killed.
+	release, err := s.gate(req.GetSessionId()).enter(ctx, req.GetSessionId())
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	// Secret env = session secrets (from the OpenSession secrets channel)
 	// overlaid with per-step secret inputs. These are injected into the child
@@ -203,12 +232,59 @@ func (s *Service) Log(ctx context.Context, req *v2.LogRequest, sender adapterhos
 	return nil
 }
 
-// CloseSession discards per-session state.
+// CloseSession discards per-session state and releases the pause gate so any
+// Execute held at the gate fails fast instead of waiting on a dead session.
 func (s *Service) CloseSession(_ context.Context, req *v2.CloseSessionRequest) (*v2.CloseSessionResponse, error) {
 	s.mu.Lock()
 	delete(s.sessions, req.GetSessionId())
+	gate := s.gates[req.GetSessionId()]
+	delete(s.gates, req.GetSessionId())
 	s.mu.Unlock()
+	if gate != nil {
+		gate.Close()
+	}
 	return &v2.CloseSessionResponse{}, nil
+}
+
+// gate returns the session's pause gate, or a closed stub for unknown
+// sessions so the gate's enter rejects immediately (keeps Execute's unknown-
+// session error ahead of the gate's refusal).
+func (s *Service) gate(id string) *lifecycleGate {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if g, ok := s.gates[id]; ok {
+		return g
+	}
+	closed := newLifecycleGate()
+	closed.Close()
+	return closed
+}
+
+// Pause holds the session at its next command boundary. If a command is
+// mid-flight, the running child drains to its boundary (never killed
+// mid-run — a command is the shell's checkpoint granularity) and the pause
+// acks only once no command is left in flight. Executions started while
+// paused wait at the gate until resumed. See lifecycle.go for the full
+// semantics.
+func (s *Service) Pause(ctx context.Context, req *v2.PauseRequest) (*v2.PauseResponse, error) {
+	id := req.GetSessionId()
+	if s.session(id) == nil {
+		return nil, fmt.Errorf("shell adapter: unknown session %q", id)
+	}
+	if err := s.gate(id).Pause(ctx); err != nil {
+		return nil, err
+	}
+	return &v2.PauseResponse{}, nil
+}
+
+// Resume releases a paused session's gate, letting held Executions run.
+func (s *Service) Resume(_ context.Context, req *v2.ResumeRequest) (*v2.ResumeResponse, error) {
+	id := req.GetSessionId()
+	if s.session(id) == nil {
+		return nil, fmt.Errorf("shell adapter: unknown session %q", id)
+	}
+	s.gate(id).Resume()
+	return &v2.ResumeResponse{}, nil
 }
 
 func (s *Service) session(id string) *sessionState {
