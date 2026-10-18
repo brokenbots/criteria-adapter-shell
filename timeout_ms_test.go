@@ -80,19 +80,27 @@ func TestResolveStepTimeout_DeclaredMapping(t *testing.T) {
 			name:    "negative declaration errors",
 			nms:     -5000,
 			input:   "",
-			wantErr: []string{"-5s", "timeout_ms=-5000", "1s–1h"},
+			wantErr: []string{"-5000ms", "timeout_ms=-5000", "1s–1h"},
 		},
 		{
 			name:    "declared 61m exceeds the 1h maximum errors",
 			nms:     61 * 60 * 1000,
 			input:   "",
-			wantErr: []string{"1h1m0s", "timeout_ms=3660000", "1s–1h"},
+			wantErr: []string{"3660000ms", "timeout_ms=3660000", "1s–1h"},
 		},
 		{
 			name:    "declared 3600001ms exceeds the 1h maximum errors",
 			nms:     3600001,
 			input:   "",
-			wantErr: []string{"1h0m0.001s", "1s–1h"},
+			wantErr: []string{"3600001ms", "1s–1h"},
+		},
+		{
+			// Overflow guard: magnitudes above int64-nanosecond space must not
+			// wrap into the accepted window; they must be rejected outright.
+			name:    "declared magnitude that would overflow Duration errors",
+			nms:     9223372036854775807,
+			input:   "",
+			wantErr: []string{"timeout_ms=9223372036854775807", "exceeds the maximum", "1s–1h"},
 		},
 	}
 	for _, tc := range tests {
@@ -211,7 +219,7 @@ func TestShell_DeclaredTimeout_OutOfRangeErrors(t *testing.T) {
 		wantErrs []string
 	}{
 		{"500ms below minimum", 500, []string{"500ms", "timeout_ms=500", "1s–1h"}},
-		{"61m above maximum", 61 * 60 * 1000, []string{"1h1m0s", "timeout_ms=3660000", "1s–1h"}},
+		{"61m above maximum", 61 * 60 * 1000, []string{"3660000ms", "timeout_ms=3660000", "1s–1h"}},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			outcome, _, _, err := runShell(
@@ -400,7 +408,7 @@ func TestHostLevel_DeclaredTimeout_OutOfRangeFailsStep(t *testing.T) {
 		wantErrs []string
 	}{
 		{"declared 500ms rejected", 500, []string{"500ms", "timeout_ms=500", "1s–1h"}},
-		{"declared 61m rejected", 61 * 60 * 1000, []string{"1h1m0s", "timeout_ms=3660000", "1s–1h"}},
+		{"declared 61m rejected", 61 * 60 * 1000, []string{"3660000ms", "timeout_ms=3660000", "1s–1h"}},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			if runtime.GOOS == "windows" {

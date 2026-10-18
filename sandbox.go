@@ -123,20 +123,23 @@ func parseTimeoutInput(raw string) (time.Duration, error) {
 //  3. defaultTimeout (5m) when neither is declared.
 func resolveStepTimeout(declaredMs int64, inputRaw string) (time.Duration, error) {
 	if declaredMs != 0 {
-		d := time.Duration(declaredMs) * time.Millisecond
-		if d < minTimeout {
+		// Validate against the raw milliseconds: converting an out-of-range
+		// magnitude to time.Duration first would overflow int64 nanoseconds
+		// for absurd magnitudes and could wrap into the accepted window,
+		// silently applying a wrong timeout instead of erroring.
+		if declaredMs < minTimeout.Milliseconds() {
 			return 0, fmt.Errorf(
-				"shell adapter: declared step timeout %v (timeout_ms=%d) is below the minimum; "+
+				"shell adapter: declared step timeout %dms (timeout_ms=%d) is below the minimum; "+
 					"declared timeout must be within the %v–%v window",
-				d, declaredMs, minTimeout, maxTimeout)
+				declaredMs, declaredMs, minTimeout, maxTimeout)
 		}
-		if d > maxTimeout {
+		if declaredMs > maxTimeout.Milliseconds() {
 			return 0, fmt.Errorf(
-				"shell adapter: declared step timeout %v (timeout_ms=%d) exceeds the maximum; "+
+				"shell adapter: declared step timeout %dms (timeout_ms=%d) exceeds the maximum; "+
 					"declared timeout must be within the %v–%v window",
-				d, declaredMs, minTimeout, maxTimeout)
+				declaredMs, declaredMs, minTimeout, maxTimeout)
 		}
-		return d, nil
+		return time.Duration(declaredMs) * time.Millisecond, nil
 	}
 	return parseTimeoutInput(inputRaw)
 }
