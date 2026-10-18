@@ -15,7 +15,7 @@ import (
 // returning the outcome, outputs, and adapter events.
 func run(t *testing.T, input map[string]string) (outcome string, outputs map[string]any, events []adapterEvt, err error) {
 	t.Helper()
-	return runShell(context.Background(), input, nil, func(string, []byte) {})
+	return runShell(context.Background(), input, nil, 0, func(string, []byte) {})
 }
 
 func findEvent(events []adapterEvt, eventType string) (map[string]any, bool) {
@@ -83,6 +83,7 @@ func TestShell_SecretEnvInjected(t *testing.T) {
 	outcome, outputs, _, err := runShell(context.Background(),
 		map[string]string{"command": `printf '%s' "$API_KEY"`},
 		map[string]string{"API_KEY": "s3cr3t"},
+		0,
 		func(string, []byte) {})
 	if err != nil {
 		t.Fatalf("runShell: %v", err)
@@ -215,7 +216,7 @@ func TestSandbox_Timeout_ShortCommandFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	defer cancel()
 
-	outcome, _, events, err := runShell(ctx, map[string]string{"command": "sleep 60", "timeout": "1s"}, nil, func(string, []byte) {})
+	outcome, _, events, err := runShell(ctx, map[string]string{"command": "sleep 60", "timeout": "1s"}, nil, 0, func(string, []byte) {})
 	if err != nil {
 		t.Fatalf("runShell: %v", err)
 	}

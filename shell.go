@@ -190,7 +190,11 @@ func (s *Service) Execute(ctx context.Context, req *v2.ExecuteRequest, sink adap
 		})
 	}
 
-	outcome, outputs, events, err := runShell(ctx, req.GetInput(), secretEnv, emit)
+	// ExecuteRequest.timeout_ms (KB-212 leg 3, wire field from KB-282) carries
+	// the engine's declared step timeout; resolveStepTimeout maps a non-zero
+	// declaration onto the validated hard timeout (1s–1h, no silent clamp) and
+	// falls back to the legacy `timeout` input / 5m default when unset.
+	outcome, outputs, events, err := runShell(ctx, req.GetInput(), secretEnv, req.GetTimeoutMs(), emit)
 	if err != nil {
 		// A configuration/wait error is the terminal signal; the host maps a
 		// non-nil Execute error to a "failure" outcome.

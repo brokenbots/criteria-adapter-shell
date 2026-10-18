@@ -32,17 +32,19 @@ type emitFunc func(stream string, chunk []byte)
 // sandbox defaults (env allowlist, PATH sanitization, hard timeout, bounded
 // output capture, working-directory confinement), streams output chunks via
 // emit, and returns the step outcome, outputs, and any adapter events.
+// declaredTimeoutMs is ExecuteRequest.timeout_ms (0 when the host declared
+// nothing); resolveStepTimeout maps it onto the validated hard timeout.
 //
 // A non-nil error means the step could not be run as configured (bad input,
 // caller cancellation, or an unexpected wait error). A non-zero exit code or a
 // step timeout is a normal "failure" outcome, not a Go error.
-func runShell(ctx context.Context, input, secretEnv map[string]string, emit emitFunc) (outcome string, outputs map[string]any, events []adapterEvt, err error) {
+func runShell(ctx context.Context, input, secretEnv map[string]string, declaredTimeoutMs int64, emit emitFunc) (outcome string, outputs map[string]any, events []adapterEvt, err error) {
 	cmdStr, ok := input["command"]
 	if !ok || cmdStr == "" {
 		return "failure", nil, nil, errors.New("shell adapter: input.command is required")
 	}
 
-	cfg, err := buildSandboxConfig(input, secretEnv)
+	cfg, err := buildSandboxConfig(input, secretEnv, declaredTimeoutMs)
 	if err != nil {
 		return "failure", nil, nil, err
 	}

@@ -25,13 +25,17 @@ const (
 	minOutputLimitBytes     = 1024             // 1 KiB
 	maxOutputLimitBytes     = 64 * 1024 * 1024 // 64 MiB
 
-	defaultTimeout = 5 * time.Minute
-	minTimeout     = time.Second
-	maxTimeout     = time.Hour
+	minTimeout = time.Second
+	maxTimeout = time.Hour
 
 	// killGrace is how long terminateWithGrace waits between SIGTERM and SIGKILL.
 	killGrace = 5 * time.Second
 )
+
+// defaultTimeout is a var (not a const) so tests can shrink the default
+// window when scaling the declared-vs-default survival scenario. The shipped
+// value is the unchanged 5-minute default.
+var defaultTimeout = 5 * time.Minute
 
 // sandboxConfig holds resolved sandbox parameters for one step execution.
 type sandboxConfig struct {
@@ -45,15 +49,18 @@ type sandboxConfig struct {
 // configuration. extraEnv holds resolved secret values (from the OpenSession
 // secrets channel and per-step secret inputs); they are injected verbatim into
 // the child environment after the allowlist, so the shell command can reference
-// them by name. Errors are returned for out-of-range timeout/output_limit_bytes
-// values so the adapter can surface them as step failures rather than panics.
-func buildSandboxConfig(input, extraEnv map[string]string) (sandboxConfig, error) {
+// them by name. declaredTimeoutMs is ExecuteRequest.timeout_ms (KB-282 wire
+// field; the engine leg KB-212 populates it from the declared step timeout) —
+// 0 when the host declared nothing. Errors are returned for out-of-range
+// timeout/output_limit_bytes values so the adapter can surface them as step
+// failures rather than panics.
+func buildSandboxConfig(input, extraEnv map[string]string, declaredTimeoutMs int64) (sandboxConfig, error) {
 	cfg := sandboxConfig{
 		timeout:          defaultTimeout,
 		outputLimitBytes: defaultOutputLimitBytes,
 	}
 
-	timeout, err := parseTimeoutInput(input["timeout"])
+	timeout, err := resolveStepTimeout(declaredTimeoutMs, input["timeout"])
 	if err != nil {
 		return cfg, err
 	}
@@ -98,6 +105,43 @@ func parseTimeoutInput(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("shell adapter: timeout %v exceeds maximum %v", d, maxTimeout)
 	}
 	return d, nil
+}
+
+// resolveStepTimeout resolves the step's hard timeout from the two available
+// channels (KB-212 leg 3: the shell adapter honors ExecuteRequest.timeout_ms):
+//
+//  1. declaredTimeoutMs — ExecuteRequest.timeout_ms, the engine's DECLARED step
+//     timeout forwarded on the v0.8.0 wire (leg 2: loader.go, step.Timeout > 0).
+//     When non-zero it is the host's deadline for this step, so it wins over
+//     the adapter's private `timeout` input. It is validated against the same
+//     1s–1h window as the input field and applied as-is: no silent clamp in
+//     either direction — a declaration outside the window fails the step with
+//     an error naming the declared value and the bound.
+//  2. The optional `timeout` step input — the legacy adapter-level channel,
+//     used when timeout_ms is unset (0 = absent = adapter applies its own
+//     default, keeping pre-v0.8.0 behavior byte-for-byte).
+//  3. defaultTimeout (5m) when neither is declared.
+func resolveStepTimeout(declaredMs int64, inputRaw string) (time.Duration, error) {
+	if declaredMs != 0 {
+		// Validate against the raw milliseconds: converting an out-of-range
+		// magnitude to time.Duration first would overflow int64 nanoseconds
+		// for absurd magnitudes and could wrap into the accepted window,
+		// silently applying a wrong timeout instead of erroring.
+		if declaredMs < minTimeout.Milliseconds() {
+			return 0, fmt.Errorf(
+				"shell adapter: declared step timeout %dms (timeout_ms=%d) is below the minimum; "+
+					"declared timeout must be within the %v–%v window",
+				declaredMs, declaredMs, minTimeout, maxTimeout)
+		}
+		if declaredMs > maxTimeout.Milliseconds() {
+			return 0, fmt.Errorf(
+				"shell adapter: declared step timeout %dms (timeout_ms=%d) exceeds the maximum; "+
+					"declared timeout must be within the %v–%v window",
+				declaredMs, declaredMs, minTimeout, maxTimeout)
+		}
+		return time.Duration(declaredMs) * time.Millisecond, nil
+	}
+	return parseTimeoutInput(inputRaw)
 }
 
 // parseOutputLimitInput parses the "output_limit_bytes" input field.
