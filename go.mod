@@ -1,10 +1,10 @@
 module github.com/brokenbots/criteria-adapter-shell
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/brokenbots/criteria-adapter-proto v0.8.0
-	github.com/brokenbots/criteria-go-adapter-sdk v0.5.4
+	github.com/brokenbots/criteria-go-adapter-sdk v0.7.0
 	google.golang.org/protobuf v1.36.12
 )
 
